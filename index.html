@@ -417,7 +417,7 @@ tbody tr:hover td{background:#fafbfd}
 
 <script>
 // ── BACKEND ───────────────────────────────────────────────────────────────────
-const BACKEND = 'https://script.google.com/macros/s/AKfycbxVuPvdINM_zdc2lLvrQM-du4Vd1dzwcXasf3viLsm-deY6rngl_bqNfZjpqQn8iLzllQ/exec';
+const BACKEND = 'https://script.google.com/macros/s/AKfycbyhbH6hroUD7hbu4Jk4xPd4M0RQBwofrBussei4L-DJI16mS1ErMPO32-yTYoYjWUNZow/exec';
 
 // ── FROTAS BASE ───────────────────────────────────────────────────────────────
 const CATEGORIAS = {
@@ -859,7 +859,12 @@ function gerarRelatorio(){
     });
 
     html += '</tbody></table></div>';
-    html += `<button class="export-btn" onclick="exportXLS()">⬇️ Exportar Excel (.xlsx)</button>`;
+    html += `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px">
+      <button class="export-btn" onclick="exportGoogleSheets()" style="background:#ecfdf5;border-color:#059669;color:#059669">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        📊 Exportar Google Planilhas
+      </button>
+    </div>`;
   }
 
   document.getElementById('rel-result').innerHTML = html;
@@ -874,169 +879,44 @@ function parseDate(str){
   return null;
 }
 
-async function exportXLS(){
+async function exportGoogleSheets(){
   const rep = window._relReport||[];
   const p   = window._relPeriod||{};
   if(!rep.length){showToast('Nenhum dado para exportar','tpu');return;}
 
-  if(!window.XLSX){
-    await new Promise((res,rej)=>{
-      const s=document.createElement('script');
-      s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-      s.onload=res; s.onerror=rej;
-      document.head.appendChild(s);
+  showToast('⏳ Gerando Google Planilhas...','tpu');
+
+  // Convert Set to Array for JSON serialization
+  const reportJson = rep.map(r=>({
+    frota:      r.frota,
+    modelo:     r.modelo,
+    categoria:  r.categoria,
+    diasIndisp: [...r.diasIndisp],
+    eventos:    r.eventos,
+  }));
+
+  try{
+    const res = await fetch(BACKEND, {
+      method: 'POST',
+      headers: {'Content-Type':'text/plain'},
+      body: JSON.stringify({
+        action:  'export',
+        report:  reportJson,
+        periodo: p,
+        usuario: currentUser?.username||'—',
+      })
     });
+    const data = await res.json();
+    if(data.error) throw new Error(data.error);
+    if(data.url){
+      showToast('✅ Planilha criada! Abrindo...','tok');
+      setTimeout(()=>window.open(data.url,'_blank'), 800);
+    }
+  }catch(e){
+    showToast('⚠️ Erro ao gerar planilha: '+e.message,'tnk');
+    console.error(e);
   }
-
-  const wb = XLSX.utils.book_new();
-
-  // ── HELPERS ──────────────────────────────────────────────────────────────
-  const border = {
-    top:   {style:'thin',color:{rgb:'E2E8F0'}},
-    bottom:{style:'thin',color:{rgb:'E2E8F0'}},
-    left:  {style:'thin',color:{rgb:'E2E8F0'}},
-    right: {style:'thin',color:{rgb:'E2E8F0'}},
-  };
-  const borderMed = {
-    top:   {style:'medium',color:{rgb:'94A3B8'}},
-    bottom:{style:'medium',color:{rgb:'94A3B8'}},
-    left:  {style:'medium',color:{rgb:'94A3B8'}},
-    right: {style:'medium',color:{rgb:'94A3B8'}},
-  };
-
-  const S = {
-    title:  {font:{bold:true,sz:16,color:{rgb:'FFFFFF'},name:'Arial'},fill:{fgColor:{rgb:'1E3A5F'}},alignment:{horizontal:'center',vertical:'center'},border:borderMed},
-    sub1:   {font:{sz:11,color:{rgb:'FFFFFF'},italic:true,name:'Arial'},fill:{fgColor:{rgb:'2563EB'}},alignment:{horizontal:'center',vertical:'center'}},
-    sub2:   {font:{sz:10,color:{rgb:'FFFFFF'},italic:true,name:'Arial'},fill:{fgColor:{rgb:'2563EB'}},alignment:{horizontal:'center',vertical:'center'}},
-    header: {font:{bold:true,sz:10,color:{rgb:'FFFFFF'},name:'Arial'},fill:{fgColor:{rgb:'1E40AF'}},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:borderMed},
-    row1:   {font:{sz:10,name:'Arial',color:{rgb:'111827'}},fill:{fgColor:{rgb:'F8FAFC'}},alignment:{vertical:'center',wrapText:true},border},
-    row2:   {font:{sz:10,name:'Arial',color:{rgb:'111827'}},fill:{fgColor:{rgb:'FFFFFF'}},alignment:{vertical:'center',wrapText:true},border},
-    frota:  {font:{bold:true,sz:11,color:{rgb:'1E3A5F'},name:'Arial'},alignment:{horizontal:'center',vertical:'center'},border},
-    dias:   {font:{bold:true,sz:12,color:{rgb:'DC2626'},name:'Arial'},alignment:{horizontal:'center',vertical:'center'},border},
-    total:  {font:{bold:true,sz:11,color:{rgb:'FFD700'},name:'Arial'},fill:{fgColor:{rgb:'1E3A5F'}},alignment:{horizontal:'center',vertical:'center'},border:borderMed},
-    totalLbl:{font:{bold:true,sz:11,color:{rgb:'FFD700'},name:'Arial'},fill:{fgColor:{rgb:'1E3A5F'}},alignment:{horizontal:'left',vertical:'center'},border:borderMed},
-    ok:     {font:{bold:true,sz:10,color:{rgb:'059669'},name:'Arial'},fill:{fgColor:{rgb:'ECFDF5'}},alignment:{horizontal:'center',vertical:'center'},border},
-    nk:     {font:{bold:true,sz:10,color:{rgb:'DC2626'},name:'Arial'},fill:{fgColor:{rgb:'FEF2F2'}},alignment:{horizontal:'center',vertical:'center'},border},
-  };
-
-  function setCell(ws, addr, value, style){
-    const t = typeof value === 'number' ? 'n' : 's';
-    ws[addr] = {t, v: value, s: style};
-  }
-  function colLetter(n){ return String.fromCharCode(65+n); }
-  function addr(col,row){ return `${colLetter(col)}${row}`; }
-
-  // ── SHEET 1: RESUMO ──────────────────────────────────────────────────────
-  const ws1 = {};
-  const totalRows = rep.length + 10; // header rows + data + total
-  const totalCols = 7;
-  ws1['!ref'] = `A1:G${rep.length+10}`;
-
-  // Row heights
-  ws1['!rows'] = [];
-  ws1['!rows'][0] = {hpt:36};  // title
-  ws1['!rows'][1] = {hpt:22};  // sub
-  ws1['!rows'][2] = {hpt:18};  // period
-  ws1['!rows'][3] = {hpt:18};  // generated
-  ws1['!rows'][4] = {hpt:10};  // gap
-  ws1['!rows'][5] = {hpt:28};  // header
-  rep.forEach((_,i)=>{ ws1['!rows'][6+i]={hpt:22}; });
-
-  // Col widths
-  ws1['!cols'] = [{wch:10},{wch:16},{wch:30},{wch:16},{wch:42},{wch:12},{wch:38}];
-
-  // Merges
-  ws1['!merges'] = [
-    {s:{r:0,c:0},e:{r:0,c:6}},
-    {s:{r:1,c:0},e:{r:1,c:6}},
-    {s:{r:2,c:0},e:{r:2,c:6}},
-    {s:{r:3,c:0},e:{r:3,c:6}},
-  ];
-
-  // Title rows
-  setCell(ws1,'A1',`RELATÓRIO DE INDISPONIBILIDADE — FAROL DAS FROTAS SOMOV`,S.title);
-  setCell(ws1,'A2',`Mercado Livre — Cabo Santo Agostinho`,S.sub1);
-  setCell(ws1,'A3',`Período: ${p.start.split('-').reverse().join('/')}  a  ${p.end.split('-').reverse().join('/')}`,S.sub2);
-  setCell(ws1,'A4',`Gerado em: ${ts()}  |  Usuário: ${currentUser?.username||'—'}`,S.sub2);
-  setCell(ws1,'A5','',{fill:{fgColor:{rgb:'F0F4FF'}}});
-
-  // Headers row 6
-  const headers = ['Frota','Modelo','Categoria','Dias Indisp.','Datas de Indisponibilidade','Ocorrências','Última Observação'];
-  headers.forEach((h,i)=>setCell(ws1,addr(i,6),h,S.header));
-
-  // Data rows starting row 7
-  rep.forEach((r,i)=>{
-    const row = 7+i;
-    const rowS = i%2===0?S.row1:S.row2;
-    const datas = [...r.diasIndisp].join(' | ');
-    const lastObs = r.eventos.length?r.eventos[r.eventos.length-1].obs:'—';
-
-    setCell(ws1,addr(0,row),r.frota,   {...S.frota,...(i%2===0?{fill:{fgColor:{rgb:'F8FAFC'}}}:{fill:{fgColor:{rgb:'FFFFFF'}}})});
-    setCell(ws1,addr(1,row),r.modelo,  rowS);
-    setCell(ws1,addr(2,row),r.categoria,rowS);
-    setCell(ws1,addr(3,row),r.diasIndisp.size, S.dias);
-    setCell(ws1,addr(4,row),datas,     rowS);
-    setCell(ws1,addr(5,row),r.eventos.length,  {...rowS,font:{...rowS.font,bold:true},alignment:{horizontal:'center',vertical:'center'}});
-    setCell(ws1,addr(6,row),lastObs,   rowS);
-  });
-
-  // Total row
-  const totRow = 7+rep.length+1;
-  ws1['!rows'][totRow-1] = {hpt:26};
-  const totDias  = rep.reduce((s,r)=>s+r.diasIndisp.size,0);
-  const totEvts  = rep.reduce((s,r)=>s+r.eventos.length,0);
-  setCell(ws1,addr(0,totRow),'TOTAL',S.totalLbl);
-  setCell(ws1,addr(1,totRow),'',S.total);
-  setCell(ws1,addr(2,totRow),`${rep.length} frota${rep.length!==1?'s':''}`,S.total);
-  setCell(ws1,addr(3,totRow),totDias,S.total);
-  setCell(ws1,addr(4,totRow),'',S.total);
-  setCell(ws1,addr(5,totRow),totEvts,S.total);
-  setCell(ws1,addr(6,totRow),'',S.total);
-
-  // Summary boxes above table — add mini KPIs
-  XLSX.utils.book_append_sheet(wb, ws1, '📊 Resumo');
-
-  // ── SHEET 2: DETALHES ────────────────────────────────────────────────────
-  const ws2 = {};
-  const det = [];
-  rep.forEach(r=>{
-    r.eventos.forEach(ev=>{
-      det.push([r.frota, r.modelo, r.categoria, ev.data, ev.hora, ev.obs, ev.resp||'—', ev.user||'—']);
-    });
-  });
-  const totalDet = det.length + 7;
-  ws2['!ref'] = `A1:H${totalDet}`;
-  ws2['!rows'] = [];
-  ws2['!rows'][0]={hpt:36}; ws2['!rows'][1]={hpt:22}; ws2['!rows'][2]={hpt:10}; ws2['!rows'][3]={hpt:28};
-  ws2['!cols'] = [{wch:10},{wch:16},{wch:30},{wch:14},{wch:10},{wch:42},{wch:18},{wch:16}];
-  ws2['!merges'] = [{s:{r:0,c:0},e:{r:0,c:7}},{s:{r:1,c:0},e:{r:1,c:7}}];
-
-  setCell(ws2,'A1','DETALHES POR FROTA — OCORRÊNCIAS DE INDISPONIBILIDADE',S.title);
-  setCell(ws2,'A2',`Período: ${p.start.split('-').reverse().join('/')} a ${p.end.split('-').reverse().join('/')}  |  Total: ${det.length} ocorrência${det.length!==1?'s':''}`,S.sub1);
-  setCell(ws2,'A3','',{});
-
-  const det_headers = ['Frota','Modelo','Categoria','Data','Hora','Observação / Motivo','Responsável','Registrado por'];
-  det_headers.forEach((h,i)=>setCell(ws2,addr(i,4),h,S.header));
-  ws2['!rows'][3]={hpt:28};
-
-  det.forEach((row,i)=>{
-    const r=5+i;
-    const rowS=i%2===0?S.row1:S.row2;
-    ws2['!rows'][r-1]={hpt:20};
-    row.forEach((val,ci)=>{
-      const s = ci===0?{...S.frota,...(i%2===0?{fill:{fgColor:{rgb:'F8FAFC'}}}:{fill:{fgColor:{rgb:'FFFFFF'}}})}:rowS;
-      setCell(ws2,addr(ci,r),val,s);
-    });
-  });
-
-  XLSX.utils.book_append_sheet(wb, ws2, '📋 Detalhes');
-
-  // ── DOWNLOAD ─────────────────────────────────────────────────────────────
-  const filename = `Relatorio_Indisponibilidade_${p.start}_a_${p.end}.xlsx`;
-  XLSX.writeFile(wb, filename);
-  showToast('✅ Excel exportado!','tok');
 }
-
 // ── TABS ──────────────────────────────────────────────────────────────────────
 function setTab(t,btn){
   if(t==='admin'&&currentUser?.role!=='admin'){showToast('⛔ Acesso restrito','tnk');return;}
