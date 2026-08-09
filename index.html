@@ -859,35 +859,146 @@ function gerarRelatorio(){
     });
 
     html += '</tbody></table></div>';
-    html += `<button class="export-btn" onclick="exportCSV()">⬇️ Exportar CSV</button>`;
+    html += `<button class="export-btn" onclick="exportXLS()">⬇️ Exportar Excel (.xlsx)</button>`;
   }
 
   document.getElementById('rel-result').innerHTML = html;
-  // Store for export
   window._relReport = reportArr;
   window._relPeriod = {start, end};
 }
 
 function parseDate(str){
   if(!str) return null;
-  // Format: dd/mm/yyyy, hh:mm
   const m = str.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{2}):(\d{2})/);
   if(m) return new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5]);
   return null;
 }
 
-function exportCSV(){
+async function exportXLS(){
   const rep = window._relReport||[];
   const p   = window._relPeriod||{};
-  let csv = 'Frota;Modelo;Categoria;Dias Indisponivel;Datas;Ocorrencias\n';
+  if(!rep.length){showToast('Nenhum dado para exportar','tpu');return;}
+
+  // Load SheetJS dynamically
+  if(!window.XLSX){
+    await new Promise((res,rej)=>{
+      const s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+      s.onload=res; s.onerror=rej;
+      document.head.appendChild(s);
+    });
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  // ── SHEET 1: RESUMO ──────────────────────────────────────────────────────
+  const resumoData = [
+    ['RELATÓRIO DE INDISPONIBILIDADE — FAROL DAS FROTAS SOMOV'],
+    ['Mercado Livre — Cabo Santo Agostinho'],
+    [`Período: ${p.start} a ${p.end}`],
+    [`Gerado em: ${ts()}`],
+    [''],
+    ['Frota','Modelo','Categoria','Dias Indisponível','Datas de Indisponibilidade','Ocorrências','Última Observação'],
+  ];
   rep.forEach(r=>{
-    csv += `${r.frota};${r.modelo};${r.categoria};${r.diasIndisp.size};"${[...r.diasIndisp].join(', ')}";${r.eventos.length}\n`;
+    resumoData.push([
+      r.frota,
+      r.modelo,
+      r.categoria,
+      r.diasIndisp.size,
+      [...r.diasIndisp].join(' | '),
+      r.eventos.length,
+      r.eventos.length?r.eventos[r.eventos.length-1].obs:'—',
+    ]);
   });
-  const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8'});
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href=url; a.download=`relatorio_indisponibilidade_${p.start}_${p.end}.csv`;
-  a.click(); URL.revokeObjectURL(url);
+  // Totals
+  resumoData.push(['']);
+  resumoData.push([
+    'TOTAL',
+    '',
+    '',
+    rep.reduce((s,r)=>s+r.diasIndisp.size,0),
+    '',
+    rep.reduce((s,r)=>s+r.eventos.length,0),
+    '',
+  ]);
+
+  const ws1 = XLSX.utils.aoa_to_sheet(resumoData);
+
+  // Column widths
+  ws1['!cols'] = [{wch:12},{wch:18},{wch:32},{wch:18},{wch:45},{wch:14},{wch:40}];
+
+  // Merge title row
+  ws1['!merges'] = [
+    {s:{r:0,c:0},e:{r:0,c:6}},
+    {s:{r:1,c:0},e:{r:1,c:6}},
+    {s:{r:2,c:0},e:{r:2,c:6}},
+    {s:{r:3,c:0},e:{r:3,c:6}},
+  ];
+
+  // Style helper
+  const titleStyle  = {font:{bold:true,sz:14,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1E3A5F'}},alignment:{horizontal:'center',vertical:'center'}};
+  const subStyle    = {font:{sz:11,color:{rgb:'FFFFFF'},italic:true},fill:{fgColor:{rgb:'2563EB'}},alignment:{horizontal:'center'}};
+  const headerStyle = {font:{bold:true,sz:10,color:{rgb:'FFFFFF'}},fill:{fgColor:{rgb:'1E40AF'}},alignment:{horizontal:'center',wrapText:true},border:{bottom:{style:'medium',color:{rgb:'94A3B8'}}}};
+  const nkStyle     = {font:{bold:true,sz:11,color:{rgb:'DC2626'}},alignment:{horizontal:'center'}};
+  const totStyle    = {font:{bold:true,sz:10,color:{rgb:'FFD700'}},fill:{fgColor:{rgb:'1E3A5F'}},alignment:{horizontal:'center'}};
+  const altStyle1   = {fill:{fgColor:{rgb:'F8FAFC'}},alignment:{wrapText:true,vertical:'center'}};
+  const altStyle2   = {fill:{fgColor:{rgb:'FFFFFF'}},alignment:{wrapText:true,vertical:'center'}};
+
+  // Apply styles
+  const applyStyle = (ws,cellAddr,style)=>{
+    if(!ws[cellAddr]) ws[cellAddr]={t:'s',v:''};
+    ws[cellAddr].s=style;
+  };
+
+  // Title rows
+  ['A1','A2','A3','A4'].forEach((c,i)=>applyStyle(ws1,c,[titleStyle,subStyle,subStyle,subStyle][i]));
+
+  // Header row (row 6 = index 5)
+  ['A6','B6','C6','D6','E6','F6','G6'].forEach(c=>applyStyle(ws1,c,headerStyle));
+
+  // Data rows styling
+  rep.forEach((_,i)=>{
+    const rowIdx = 7+i;
+    const style = i%2===0?altStyle1:altStyle2;
+    ['A','B','C','D','E','F','G'].forEach(col=>{
+      const cell = `${col}${rowIdx}`;
+      if(!ws1[cell]) ws1[cell]={t:'s',v:''};
+      ws1[cell].s = col==='D'?{...nkStyle,...style}:style;
+    });
+  });
+
+  // Total row
+  const totRow = resumoData.length;
+  ['A','B','C','D','E','F','G'].forEach(col=>applyStyle(ws1,`${col}${totRow}`,totStyle));
+
+  XLSX.utils.book_append_sheet(wb, ws1, 'Resumo');
+
+  // ── SHEET 2: DETALHES POR FROTA ──────────────────────────────────────────
+  const detData = [
+    ['DETALHES POR FROTA — OCORRÊNCIAS DE INDISPONIBILIDADE'],
+    [''],
+    ['Frota','Modelo','Categoria','Data','Hora','Observação','Responsável','Registrado por'],
+  ];
+  rep.forEach(r=>{
+    r.eventos.forEach(ev=>{
+      detData.push([r.frota,r.modelo,r.categoria,ev.data,ev.hora,ev.obs,ev.resp,ev.user||'—']);
+    });
+    detData.push(['','','','','','','','']); // gap between frotas
+  });
+
+  const ws2 = XLSX.utils.aoa_to_sheet(detData);
+  ws2['!cols'] = [{wch:12},{wch:18},{wch:30},{wch:14},{wch:10},{wch:40},{wch:18},{wch:16}];
+  ws2['!merges'] = [{s:{r:0,c:0},e:{r:0,c:7}}];
+  applyStyle(ws2,'A1',titleStyle);
+  ['A3','B3','C3','D3','E3','F3','G3','H3'].forEach(c=>applyStyle(ws2,c,headerStyle));
+
+  XLSX.utils.book_append_sheet(wb, ws2, 'Detalhes por Frota');
+
+  // ── DOWNLOAD ─────────────────────────────────────────────────────────────
+  const filename = `Relatorio_Indisponibilidade_${p.start}_a_${p.end}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  showToast('✅ Excel exportado com sucesso!','tok');
 }
 
 // ── TABS ──────────────────────────────────────────────────────────────────────
