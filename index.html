@@ -983,6 +983,85 @@ function exportGoogleSheets(){
 
     XLSX.utils.book_append_sheet(wb,ws2,'Detalhes');
 
+    // ── SHEET 3: RESUMO RÁPIDO ───────────────────────────────────────────────
+    const ws3={};
+    // Build rows: one per frota, sorted by dias ASC
+    const resumoRapido = rep.map(r=>{
+      const dias = r.diasIndisp.size;
+      const datas = [...r.diasIndisp].sort();
+      // Get date range: first and last date
+      let periodo3 = '—';
+      if(datas.length===1){
+        periodo3 = datas[0];
+      } else if(datas.length>1){
+        periodo3 = `${datas[0]} - ${datas[datas.length-1]}`;
+      }
+      // Machine name: categoria short + frota
+      const catShort = r.categoria
+        .replace('Empilhadeira Retrátil','Empilhadeira Retrátil')
+        .replace('Paleteira Elétrica','Paleteira Elétrica')
+        .replace('Patolada Elétrica — Hyster','Patolada Hyster')
+        .replace('Patolada Elétrica — Jungheinrich','Patolada Jungheinrich')
+        .replace('Transpaleteira Embarcada','Transpaleteira')
+        .replace('Paleteira Vertical (Stacker)','Paleteira Vertical');
+      return {
+        maquina: `${catShort} ${r.frota}`,
+        dias,
+        periodo3,
+        raw: datas,
+      };
+    }).sort((a,b)=>a.dias-b.dias); // ASC: menor para maior
+
+    const totalRows3 = resumoRapido.length + 6;
+    ws3['!ref']=`A1:B${totalRows3}`;
+    ws3['!rows']=[{hpt:38},{hpt:24},{hpt:20},{hpt:8},{hpt:28},...resumoRapido.map(()=>({hpt:22})),{hpt:8},{hpt:26}];
+    ws3['!cols']=[{wch:38},{wch:32}];
+    ws3['!merges']=[{s:{r:0,c:0},e:{r:0,c:1}},{s:{r:1,c:0},e:{r:1,c:1}},{s:{r:2,c:0},e:{r:2,c:1}}];
+
+    // Title
+    sc(ws3,'A1','RESUMO RÁPIDO DE INDISPONIBILIDADE',S.title);
+    sc(ws3,'A2','Mercado Livre — Cabo Santo Agostinho',S.sub1);
+    sc(ws3,'A3',`Período: ${startFmt}  a  ${endFmt}  |  Ordenado: menor → maior`,S.sub2);
+    sc(ws3,'A4','',S.gap); sc(ws3,'B4','',S.gap);
+
+    // Headers
+    sc(ws3,'A5','Máquina',S.header);
+    sc(ws3,'B5','Quantidade de Dias Parada',S.header);
+
+    // Data rows
+    resumoRapido.forEach((r,i)=>{
+      const row=6+i;
+      const bg=i%2===0?'F8FAFC':'FFFFFF';
+      const diasStr = String(r.dias).padStart(2,'0')+` (${r.periodo3})`;
+
+      // Máquina cell
+      ws3['A'+row]={t:'s',v:r.maquina,s:{
+        font:{sz:10,name:'Arial',color:{rgb:'1E3A5F'},bold:true},
+        fill:{fgColor:{rgb:bg}},
+        alignment:{horizontal:'left',vertical:'center'},
+        border:{top:{style:'thin',color:{rgb:'E2E8F0'}},bottom:{style:'thin',color:{rgb:'E2E8F0'}},left:{style:'thin',color:{rgb:'E2E8F0'}},right:{style:'thin',color:{rgb:'E2E8F0'}}},
+      }};
+
+      // Dias cell — color based on severity
+      const diasColor = r.dias>=10?'991B1B':r.dias>=5?'DC2626':r.dias>=2?'D97706':'059669';
+      const diasBg    = r.dias>=10?'FEE2E2':r.dias>=5?'FEF2F2':r.dias>=2?'FFFBEB':'ECFDF5';
+      ws3['B'+row]={t:'s',v:diasStr,s:{
+        font:{bold:true,sz:10,name:'Arial',color:{rgb:diasColor}},
+        fill:{fgColor:{rgb:diasBg}},
+        alignment:{horizontal:'center',vertical:'center'},
+        border:{top:{style:'thin',color:{rgb:'E2E8F0'}},bottom:{style:'thin',color:{rgb:'E2E8F0'}},left:{style:'thin',color:{rgb:'E2E8F0'}},right:{style:'thin',color:{rgb:'E2E8F0'}}},
+      }};
+    });
+
+    // Total row
+    const tr3 = 6+resumoRapido.length+1;
+    ws3['!rows'].push({hpt:8},{hpt:26});
+    const totDiasSum = resumoRapido.reduce((s,r)=>s+r.dias,0);
+    ws3['A'+tr3]={t:'s',v:'TOTAL DE MÁQUINAS COM PARADA',s:S.totalL};
+    ws3['B'+tr3]={t:'s',v:`${resumoRapido.length} máquina(s)  |  ${totDiasSum} dia(s) no total`,s:S.total};
+
+    XLSX.utils.book_append_sheet(wb,ws3,'Resumo Rápido');
+
     // ── DOWNLOAD ─────────────────────────────────────────────────────────────
     const fname=`Relatorio_${p.start}_a_${p.end}.xlsx`;
     XLSX.writeFile(wb,fname,{bookType:'xlsx',type:'binary'});
