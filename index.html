@@ -823,7 +823,7 @@ function gerarRelatorio(){
     // Pega todo o histórico desta frota ordenado cronologicamente
     const frotaHist = history
       .filter(h=>h.frota===frota)
-      .map(h=>({...h, _date: parseDate(h.at)}))
+      .map(h=>({...h, _date: parseDate(h.dataOcorrenciaFmt||h.at)}))
       .filter(h=>h._date)
       .sort((a,b)=>a._date-b._date);
 
@@ -962,8 +962,12 @@ function gerarRelatorio(){
 
 function parseDate(str){
   if(!str) return null;
-  const m = str.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s*(\d{2}):(\d{2})/);
+  // Formato: dd/mm/yyyy, hh:mm ou dd/mm/yyyy hh:mm
+  const m = str.match(/(\d{2})\/(\d{2})\/(\d{4})[,\s]+\s*(\d{2}):(\d{2})/);
   if(m) return new Date(+m[3],+m[2]-1,+m[1],+m[4],+m[5]);
+  // Formato: yyyy-mm-dd (campo dataOcorrencia)
+  const m2 = str.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if(m2) return new Date(+m2[1],+m2[2]-1,+m2[3],0,0);
   return null;
 }
 
