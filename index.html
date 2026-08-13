@@ -302,7 +302,13 @@ tbody tr:hover td{background:#fafbfd}
       <!-- HISTÓRICO -->
       <div id="view-historico" class="hidden">
         <div class="hcard">
-          <div class="hhead"><h3 style="font-size:14px;font-weight:700">Histórico de alterações</h3><span class="hcnt" id="h-count">0 registros</span></div>
+          <div class="hhead">
+            <h3 style="font-size:14px;font-weight:700">Histórico de alterações</h3>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="hcnt" id="h-count">0 registros</span>
+              <button id="btn-clear-hist" onclick="clearHistory()" class="hidden" style="border:1.5px solid #fecaca;background:transparent;color:var(--nk);border-radius:6px;padding:3px 10px;font-size:11px;font-weight:700;cursor:pointer">🗑 Limpar tudo</button>
+            </div>
+          </div>
           <div id="hist-list"></div>
         </div>
       </div>
@@ -525,7 +531,10 @@ async function doLogin(){
 function startApp(){
   document.getElementById('login-screen').classList.add('hidden');
   document.getElementById('app').classList.remove('hidden');
-  if(currentUser.role==='admin') document.getElementById('tab-admin').classList.remove('hidden');
+  if(currentUser.role==='admin'){
+    document.getElementById('tab-admin').classList.remove('hidden');
+    document.getElementById('btn-clear-hist').classList.remove('hidden');
+  }
   document.getElementById('user-avatar').textContent = currentUser.username[0].toUpperCase();
   document.getElementById('user-name-bar').textContent = currentUser.username;
   document.getElementById('user-role-bar').textContent = currentUser.role==='admin'?'· Admin':'';
@@ -746,10 +755,12 @@ function renderHistory(){
   const cnt=history.length;
   document.getElementById('h-count').textContent=cnt+' registro'+(cnt!==1?'s':'');
   if(!cnt){document.getElementById('hist-list').innerHTML='<div style="padding:32px;text-align:center;color:var(--mu);font-size:13px">Nenhuma alteração ainda.</div>';return;}
-  document.getElementById('hist-list').innerHTML=[...history].reverse().map(h=>{
+  // Renderiza em ordem reversa mas mantém índice original para exclusão
+  const reversed=[...history].map((h,i)=>({...h,_idx:i})).reverse();
+  document.getElementById('hist-list').innerHTML=reversed.map(h=>{
     const c=CLS[h.newStatus]||'ok';
     const hc=h.newStatus==='ok'?'var(--ok)':h.newStatus==='warn'?'var(--wn)':'var(--nk)';
-    return`<div class="hi">
+    return`<div class="hi" id="hi-${h._idx}">
       <div class="hdot ${c}"></div>
       <div style="flex:1">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:2px">
@@ -758,6 +769,7 @@ function renderHistory(){
           <span style="color:var(--mu)">→</span>
           <span style="font-size:11px;font-weight:700;color:${hc}">${ICO[h.newStatus]} ${LBL[h.newStatus]}</span>
           <span style="font-size:11px;color:var(--mu);margin-left:auto;white-space:nowrap">${h.at}</span>
+          <button onclick="delHistory(${h._idx})" title="Excluir registro" style="border:none;background:transparent;color:#94a3b8;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px;line-height:1;margin-left:4px" onmouseover="this.style.color='var(--nk)';this.style.background='var(--nkb)'" onmouseout="this.style.color='#94a3b8';this.style.background='transparent'">🗑</button>
         </div>
         ${h.obs?`<div style="font-size:11px;color:var(--mu);margin-top:2px">📝 ${h.obs}</div>`:''}
         ${h.dataOcorrencia?`<div style="font-size:11px;color:var(--mu)">📅 ${h.dataOcorrencia}</div>`:''}
@@ -766,6 +778,23 @@ function renderHistory(){
       </div>
     </div>`;
   }).join('');
+}
+
+async function clearHistory(){
+  if(!confirm('Excluir TODO o histórico? Esta ação não pode ser desfeita!')) return;
+  history=[];
+  renderHistory();
+  showToast('🗑 Histórico limpo','tpu');
+  await persistAll();
+}
+
+async function delHistory(idx){
+  if(!confirm('Excluir este registro do histórico?')) return;
+  history.splice(idx, 1);
+  renderHistory();
+  document.getElementById('h-count').textContent=history.length+' registro'+(history.length!==1?'s':'');
+  showToast('🗑 Registro excluído','tpu');
+  await persistAll();
 }
 
 // ── RELATÓRIO ─────────────────────────────────────────────────────────────────
