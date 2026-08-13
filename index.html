@@ -840,6 +840,8 @@ function gerarRelatorio(){
     const diasIndisp = new Set();
     const eventos    = [];
     let nokInicio    = null;
+    let dataInicio   = null;
+    let dataFim      = null;
 
     // Processa cada evento cronologicamente usando dataOcorrencia quando disponível
     hist.forEach(h => {
@@ -850,8 +852,9 @@ function gerarRelatorio(){
         // Inicia novo período de indisponibilidade (permite múltiplos ciclos)
         if(!nokInicio) {
           nokInicio = d;
+          if(!dataInicio) dataInicio = d;
         }
-        // Registra ocorrência se está dentro ou próximo do período filtrado
+        // Registra ocorrência se está dentro do período filtrado
         if(d <= endD) {
           eventos.push({
             data: d.toLocaleDateString('pt-BR'),
@@ -863,6 +866,7 @@ function gerarRelatorio(){
         // Voltou — calcula dias indisponíveis do ciclo atual
         if(nokInicio) {
           adicionarDias(diasIndisp, nokInicio, d, startD, endD);
+          dataFim   = d;
           nokInicio = null;
         }
       }
@@ -871,10 +875,13 @@ function gerarRelatorio(){
     // Se ainda está indisponível (sem registro de retorno)
     if(nokInicio) {
       adicionarDias(diasIndisp, nokInicio, new Date(), startD, endD);
+      dataFim = null; // ainda indisponível
     } else if(maq.status === 'nok' && !hist.length) {
       // Máquina está nok mas sem histórico processável
       const ini = parseDate(maq.updatedAt) || startD;
       adicionarDias(diasIndisp, ini, new Date(), startD, endD);
+      dataInicio = ini;
+      dataFim    = null;
     }
 
     if(diasIndisp.size > 0){
@@ -884,6 +891,8 @@ function gerarRelatorio(){
         categoria: maq.categoria || '—',
         eventos,
         diasIndisp,
+        dataInicio,
+        dataFim,
       };
     }
   });
@@ -912,13 +921,18 @@ function gerarRelatorio(){
 
     reportArr.forEach(r=>{
       const lastObs = r.eventos.length?r.eventos[r.eventos.length-1].obs:'—';
-      const datas = [...r.diasIndisp].join(' · ');
+      const fmtDate = d => d ? d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}) : null;
+      const inicio  = fmtDate(r.dataInicio);
+      const fim     = fmtDate(r.dataFim);
+      const datas   = inicio && fim   ? `${inicio} - ${fim}`
+                    : inicio && !fim  ? `${inicio} - Em aberto`
+                    : '—';
       html += `<tr>
         <td style="font-weight:800;color:var(--ac)">${r.frota}</td>
         <td style="font-size:11px">${r.modelo}</td>
         <td style="font-size:11px;color:var(--mu)">${r.categoria}</td>
         <td><span style="background:var(--nkb);color:var(--nk);font-weight:800;padding:2px 9px;border-radius:99px;font-size:12px">${r.diasIndisp.size} dia${r.diasIndisp.size!==1?'s':''}</span></td>
-        <td style="font-size:11px;color:var(--mu);max-width:200px">${datas}</td>
+        <td style="font-size:11px;color:var(--mu);white-space:nowrap">${datas}</td>
         <td style="font-size:12px;font-weight:700;color:var(--wn)">${r.eventos.length}</td>
         <td style="font-size:11px;color:var(--mu);max-width:180px">${lastObs}</td>
       </tr>`;
