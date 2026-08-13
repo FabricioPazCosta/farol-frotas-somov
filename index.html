@@ -383,9 +383,19 @@ tbody tr:hover td{background:#fafbfd}
     </div>
     <div class="mlbl">Observação / Motivo</div>
     <textarea class="mta" id="m-obs" placeholder="Descreva o motivo, falha ou detalhe..."></textarea>
-    <div style="display:flex;gap:8px;margin-top:10px;margin-bottom:14px">
+    <div style="display:flex;gap:8px;margin-top:10px;margin-bottom:10px">
       <div style="flex:1"><div class="mlbl">Turno</div><input class="min2" id="m-turno" placeholder="Manhã / Tarde / Noite"></div>
       <div style="flex:1"><div class="mlbl">Responsável</div><input class="min2" id="m-resp" placeholder="Nome do operador"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <div style="flex:1">
+        <div class="mlbl">Data de Ocorrência</div>
+        <input class="min2" type="date" id="m-data" style="width:100%">
+      </div>
+      <div style="flex:1">
+        <div class="mlbl">Hora de Ocorrência</div>
+        <input class="min2" type="time" id="m-hora" style="width:100%">
+      </div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button class="bc" onclick="closeModal()">Cancelar</button>
@@ -683,6 +693,7 @@ function renderFarol(){
               <div class="obs-lbl">Observação</div>
               <div class="obs-txt">${m.obs||'<i>Sem observação</i>'}</div>
               ${m.resp?`<div class="mc-meta">👤 ${m.resp}</div>`:''}
+              ${m.dataOcorrenciaFmt?`<div class="mc-meta">📅 ${m.dataOcorrenciaFmt}</div>`:''}
               ${m.updatedAt?`<div class="mc-meta">🕐 ${m.updatedAt}</div>`:''}
               <div class="ehint">Editar →</div>
             </div>
@@ -715,7 +726,7 @@ function renderTable(){
   });
   if(!rows.length){document.getElementById('tbl-body').innerHTML='<div style="padding:40px;text-align:center;color:var(--mu)">Nenhuma encontrada.</div>';return;}
   document.getElementById('tbl-body').innerHTML=`<table>
-    <thead><tr><th>Frota</th><th>Modelo</th><th>Categoria</th><th>Status</th><th>Observação</th><th>Turno</th><th>Responsável</th><th>Atualizado</th><th></th></tr></thead>
+    <thead><tr><th>Frota</th><th>Modelo</th><th>Categoria</th><th>Status</th><th>Observação</th><th>Turno</th><th>Responsável</th><th>Data Ocorrência</th><th>Atualizado</th><th></th></tr></thead>
     <tbody>${rows.map(m=>{const c=CLS[m.status]||'ok';return`<tr>
       <td style="font-weight:800;color:var(--ac)">${m.frota}</td>
       <td style="font-size:12px">${m.modelo}</td>
@@ -724,6 +735,7 @@ function renderTable(){
       <td style="color:var(--mu);font-size:11px;max-width:180px">${m.obs||'—'}</td>
       <td style="color:var(--mu);font-size:11px">${m.turno||'—'}</td>
       <td style="color:var(--mu);font-size:11px">${m.resp||'—'}</td>
+      <td style="color:var(--mu);font-size:11px;white-space:nowrap">${m.dataOcorrenciaFmt||'—'}</td>
       <td style="color:var(--mu);font-size:11px;white-space:nowrap">${m.updatedAt||'—'}</td>
       <td><button class="edb" onclick="openModal('${m.frota}')">Editar</button></td>
     </tr>`;}).join('')}</tbody></table>`;
@@ -748,6 +760,7 @@ function renderHistory(){
           <span style="font-size:11px;color:var(--mu);margin-left:auto;white-space:nowrap">${h.at}</span>
         </div>
         ${h.obs?`<div style="font-size:11px;color:var(--mu);margin-top:2px">📝 ${h.obs}</div>`:''}
+        ${h.dataOcorrencia?`<div style="font-size:11px;color:var(--mu)">📅 ${h.dataOcorrencia}</div>`:''}
         ${h.resp?`<div style="font-size:11px;color:var(--mu)">👤 ${h.resp}</div>`:''}
         ${h.user?`<div style="font-size:11px;color:var(--a2)">🔐 ${h.user}</div>`:''}
       </div>
@@ -1092,6 +1105,11 @@ function openModal(frota){
   document.getElementById('m-obs').value=m.obs||'';
   document.getElementById('m-turno').value=m.turno||'';
   document.getElementById('m-resp').value=m.resp||'';
+  // Data e hora — carrega valor salvo ou usa hoje como padrão
+  const savedData = m.dataOcorrencia || new Date().toISOString().split('T')[0];
+  const savedHora = m.horaOcorrencia || new Date().toTimeString().slice(0,5);
+  document.getElementById('m-data').value=savedData;
+  document.getElementById('m-hora').value=savedHora;
   updateModalBtns();
   document.getElementById('modal-ov').classList.remove('hidden');
 }
@@ -1110,9 +1128,13 @@ async function saveModal(){
   const newObs=document.getElementById('m-obs').value.trim();
   const newTurno=document.getElementById('m-turno').value.trim();
   const newResp=document.getElementById('m-resp').value.trim();
-  history.push({frota:m.frota,modelo:m.modelo,categoria:m.categoria,prevStatus:m.status,newStatus:modalStatus,obs:newObs,resp:newResp,user:currentUser?.username,at:t});
+  const newData=document.getElementById('m-data').value;
+  const newHora=document.getElementById('m-hora').value;
+  // Formata data para exibição: dd/mm/yyyy hh:mm
+  const dataFmt = newData ? newData.split('-').reverse().join('/') + (newHora ? ' ' + newHora : '') : '';
+  history.push({frota:m.frota,modelo:m.modelo,categoria:m.categoria,prevStatus:m.status,newStatus:modalStatus,obs:newObs,resp:newResp,user:currentUser?.username,at:t,dataOcorrencia:dataFmt});
   const idx=machines.findIndex(x=>x.frota===modalId);
-  machines[idx]={...m,status:modalStatus,obs:newObs,turno:newTurno||m.turno,resp:newResp,updatedAt:t};
+  machines[idx]={...m,status:modalStatus,obs:newObs,turno:newTurno||m.turno,resp:newResp,updatedAt:t,dataOcorrencia:newData,horaOcorrencia:newHora,dataOcorrenciaFmt:dataFmt};
   closeModal(); renderAll();
   const c=CLS[modalStatus];
   showToast(`${ICO[modalStatus]} Frota ${modalId} → ${LBL[modalStatus]}`,c==='ok'?'tok':c==='wn'?'twn':'tnk');
