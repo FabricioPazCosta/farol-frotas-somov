@@ -798,9 +798,22 @@ async function delHistory(idx){
 }
 
 // ── RELATÓRIO ─────────────────────────────────────────────────────────────────
+function adicionarDias(set, inicio, fim, startD, endD){
+  // Adiciona todos os dias entre inicio e fim que estão no período filtrado
+  // Não inclui o dia em que voltou (fim)
+  let d = new Date(Math.max(inicio.getTime(), startD.getTime()));
+  d.setHours(0,0,0,0);
+  const fimDia = new Date(fim); fimDia.setHours(0,0,0,0);
+  const limite = new Date(Math.min(fimDia.getTime()-1, endD.getTime()));
+  while(d <= limite){
+    set.add(d.toLocaleDateString('pt-BR'));
+    d = new Date(d); d.setDate(d.getDate()+1);
+  }
+}
+
 function gerarRelatorio(){
-  const start = document.getElementById('rel-start').value;
-  const end   = document.getElementById('rel-end').value;
+  const start    = document.getElementById('rel-start').value;
+  const end      = document.getElementById('rel-end').value;
   const frotaFil = document.getElementById('rel-frota').value;
   const catFil   = document.getElementById('rel-cat').value;
   if(!start||!end){showToast('Selecione o período','tpu');return;}
@@ -809,101 +822,59 @@ function gerarRelatorio(){
   const startD = new Date(start+'T00:00:00');
   const endD   = new Date(end+'T23:59:59');
 
-  // Pega frotas únicas para analisar
-  const frotasUnicas = [...new Set(machines.map(m=>m.frota))];
   const report = {};
 
-  frotasUnicas.forEach(frota=>{
-    // Aplica filtros
-    if(frotaFil && frota !== frotaFil) return;
-    const maq = machines.find(m=>m.frota===frota);
-    if(!maq) return;
-    if(catFil && maq.categoria !== catFil) return;
+  // Percorre cada frota
+  machines.forEach(maq=>{
+    if(frotaFil && maq.frota !== frotaFil) return;
+    if(catFil   && maq.categoria !== catFil) return;
 
-    // Pega todo o histórico desta frota ordenado cronologicamente
-    const frotaHist = history
-      .filter(h=>h.frota===frota)
-      .map(h=>({...h, _date: parseDate(h.dataOcorrenciaFmt||h.at)}))
-      .filter(h=>h._date)
-      .sort((a,b)=>a._date-b._date);
+    // Pega histórico desta frota ordenado por data (campo at)
+    const hist = [...history]
+      .filter(h => h.frota === maq.frota && parseDate(h.at))
+      .sort((a,b) => parseDate(a.at) - parseDate(b.at));
 
-    // Calcula períodos de indisponibilidade
+    if(!hist.length && maq.status !== 'nok') return;
+
     const diasIndisp = new Set();
-    const eventos = [];
-    let inicioNok = null;
-    let obsNok = '—';
-    let respNok = '—';
-    let userNok = '—';
+    const eventos    = [];
+    let nokInicio    = null;
 
-    // Adiciona estado atual ao final do histórico para fechar períodos abertos
-    const histComAtual = [...frotaHist];
-    if(maq.status === 'nok' && maq.updatedAt){
-      // Frota ainda está indisponível — fecha com data final do período
-      histComAtual.push({
-        frota, newStatus:'nok', _date: endD,
-        obs: maq.obs||'—', resp: maq.resp||'—', user:'—', at: maq.updatedAt
-      });
-    }
+    // Processa cada evento cronologicamente
+    hist.forEach(h => {
+      const d = parseDate(h.at);
+      if(!d) return;
 
-    histComAtual.forEach(h=>{
-      if(h.newStatus === 'nok'){
-        // Início de indisponibilidade
-        if(!inicioNok){
-          inicioNok = h._date;
-          obsNok  = h.obs||'—';
-          respNok = h.resp||'—';
-          userNok = h.user||'—';
-          // Adiciona evento
-          if(h._date >= startD && h._date <= endD){
-            const dateStr = h._date.toLocaleDateString('pt-BR');
-            eventos.push({
-              data: dateStr,
-              hora: h._date.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
-              obs:  obsNok, resp: respNok, user: userNok,
-              tipo: 'inicio'
-            });
-          }
+      if(h.newStatus === 'nok') {
+        // Marca início da indisponibilidade
+        if(!nokInicio) {
+          nokInicio = d;
+          eventos.push({
+            data: d.toLocaleDateString('pt-BR'),
+            hora: d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
+            obs:  h.obs||'—', resp: h.resp||'—', user: h.user||'—'
+          });
         }
       } else {
-        // Fim de indisponibilidade (ok ou warn)
-        if(inicioNok){
-          const fimNok = h._date;
-          // Calcula todos os dias do período entre início e fim
-          // Início: maior entre inicioNok e startD
-          // Fim: menor entre fimNok-1dia e endD (não conta o dia que voltou)
-          let d = new Date(Math.max(inicioNok.getTime(), startD.getTime()));
-          d.setHours(0,0,0,0);
-          // Conta os dias indisponível sem incluir o dia de retorno
-          // Ex: 13→14→15 (voltou) = 2 dias (13 e 14)
-          const diaRetorno = new Date(fimNok);
-          diaRetorno.setHours(0,0,0,0);
-          const fim = new Date(Math.min(diaRetorno.getTime()-1, endD.getTime()));
-          while(d <= fim){
-            diasIndisp.add(d.toLocaleDateString('pt-BR'));
-            d.setDate(d.getDate()+1);
-          }
-          inicioNok = null;
+        // Voltou — calcula dias indisponíveis
+        if(nokInicio) {
+          adicionarDias(diasIndisp, nokInicio, d, startD, endD);
+          nokInicio = null;
         }
       }
     });
 
-    // Se ainda está indisponível até hoje
-    if(inicioNok && maq.status === 'nok'){
-      let d = new Date(Math.max(inicioNok.getTime(), startD.getTime()));
-      d.setHours(0,0,0,0);
-      const hoje = new Date(); hoje.setHours(23,59,59,0);
-      const fim = new Date(Math.min(endD.getTime(), hoje.getTime()));
-      while(d <= fim){
-        diasIndisp.add(d.toLocaleDateString('pt-BR'));
-        d.setDate(d.getDate()+1);
-      }
+    // Se ainda está indisponível (sem registro de retorno)
+    if(nokInicio || maq.status === 'nok') {
+      const ini = nokInicio || parseDate(maq.updatedAt) || startD;
+      adicionarDias(diasIndisp, ini, new Date(), startD, endD);
     }
 
     if(diasIndisp.size > 0){
-      report[frota] = {
-        frota,
-        modelo:    maq.modelo||MODELOS[frota]||'—',
-        categoria: maq.categoria||'—',
+      report[maq.frota] = {
+        frota:     maq.frota,
+        modelo:    maq.modelo || MODELOS[maq.frota] || '—',
+        categoria: maq.categoria || '—',
         eventos,
         diasIndisp,
       };
