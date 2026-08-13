@@ -846,9 +846,12 @@ function gerarRelatorio(){
       if(!d) return;
 
       if(h.newStatus === 'nok') {
-        // Marca início da indisponibilidade
+        // Inicia novo período de indisponibilidade (permite múltiplos ciclos)
         if(!nokInicio) {
           nokInicio = d;
+        }
+        // Registra ocorrência se está dentro ou próximo do período filtrado
+        if(d <= endD) {
           eventos.push({
             data: d.toLocaleDateString('pt-BR'),
             hora: d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
@@ -856,7 +859,7 @@ function gerarRelatorio(){
           });
         }
       } else {
-        // Voltou — calcula dias indisponíveis
+        // Voltou — calcula dias indisponíveis do ciclo atual
         if(nokInicio) {
           adicionarDias(diasIndisp, nokInicio, d, startD, endD);
           nokInicio = null;
@@ -865,8 +868,11 @@ function gerarRelatorio(){
     });
 
     // Se ainda está indisponível (sem registro de retorno)
-    if(nokInicio || maq.status === 'nok') {
-      const ini = nokInicio || parseDate(maq.updatedAt) || startD;
+    if(nokInicio) {
+      adicionarDias(diasIndisp, nokInicio, new Date(), startD, endD);
+    } else if(maq.status === 'nok' && !hist.length) {
+      // Máquina está nok mas sem histórico processável
+      const ini = parseDate(maq.updatedAt) || startD;
       adicionarDias(diasIndisp, ini, new Date(), startD, endD);
     }
 
