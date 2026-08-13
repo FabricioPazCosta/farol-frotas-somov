@@ -829,10 +829,11 @@ function gerarRelatorio(){
     if(frotaFil && maq.frota !== frotaFil) return;
     if(catFil   && maq.categoria !== catFil) return;
 
-    // Pega histórico desta frota ordenado por data (campo at)
+    // Usa dataOcorrencia (preenchida pelo usuário) quando disponível, senão usa at (timestamp do clique)
+    const getDataEvento = h => parseDate(h.dataOcorrencia) || parseDate(h.at);
     const hist = [...history]
-      .filter(h => h.frota === maq.frota && parseDate(h.at))
-      .sort((a,b) => parseDate(a.at) - parseDate(b.at));
+      .filter(h => h.frota === maq.frota && getDataEvento(h))
+      .sort((a,b) => getDataEvento(a) - getDataEvento(b));
 
     if(!hist.length && maq.status !== 'nok') return;
 
@@ -840,9 +841,9 @@ function gerarRelatorio(){
     const eventos    = [];
     let nokInicio    = null;
 
-    // Processa cada evento cronologicamente
+    // Processa cada evento cronologicamente usando dataOcorrencia quando disponível
     hist.forEach(h => {
-      const d = parseDate(h.at);
+      const d = getDataEvento(h);
       if(!d) return;
 
       if(h.newStatus === 'nok') {
