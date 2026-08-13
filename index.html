@@ -868,10 +868,16 @@ function gerarRelatorio(){
         // Fim de indisponibilidade (ok ou warn)
         if(inicioNok){
           const fimNok = h._date;
-          // Calcula todos os dias do período que se cruzam com o filtro
-          let d = new Date(Math.max(inicioNok, startD));
+          // Calcula todos os dias do período entre início e fim
+          // Início: maior entre inicioNok e startD
+          // Fim: menor entre fimNok-1dia e endD (não conta o dia que voltou)
+          let d = new Date(Math.max(inicioNok.getTime(), startD.getTime()));
           d.setHours(0,0,0,0);
-          const fim = new Date(Math.min(fimNok, endD));
+          // Conta os dias indisponível sem incluir o dia de retorno
+          // Ex: 13→14→15 (voltou) = 2 dias (13 e 14)
+          const diaRetorno = new Date(fimNok);
+          diaRetorno.setHours(0,0,0,0);
+          const fim = new Date(Math.min(diaRetorno.getTime()-1, endD.getTime()));
           while(d <= fim){
             diasIndisp.add(d.toLocaleDateString('pt-BR'));
             d.setDate(d.getDate()+1);
@@ -883,9 +889,10 @@ function gerarRelatorio(){
 
     // Se ainda está indisponível até hoje
     if(inicioNok && maq.status === 'nok'){
-      let d = new Date(Math.max(inicioNok, startD));
+      let d = new Date(Math.max(inicioNok.getTime(), startD.getTime()));
       d.setHours(0,0,0,0);
-      const fim = new Date(Math.min(endD, new Date()));
+      const hoje = new Date(); hoje.setHours(23,59,59,0);
+      const fim = new Date(Math.min(endD.getTime(), hoje.getTime()));
       while(d <= fim){
         diasIndisp.add(d.toLocaleDateString('pt-BR'));
         d.setDate(d.getDate()+1);
