@@ -809,64 +809,103 @@ function gerarRelatorio(){
   const startD = new Date(start+'T00:00:00');
   const endD   = new Date(end+'T23:59:59');
 
-  // Filter history for NOK events in period
-  const nkEvents = history.filter(h=>{
-    if(h.newStatus!=='nok') return false;
-    const hDate = parseDate(h.at);
-    if(!hDate) return false;
-    if(hDate<startD||hDate>endD) return false;
-    if(frotaFil&&h.frota!==frotaFil) return false;
-    if(catFil){
-      const m=machines.find(x=>x.frota===h.frota);
-      if(!m||m.categoria!==catFil) return false;
-    }
-    return true;
-  });
-
-  // Also check current status (machines currently nok during period)
-  const currentNok = machines.filter(m=>{
-    if(m.status!=='nok') return false;
-    if(frotaFil&&m.frota!==frotaFil) return false;
-    if(catFil&&m.categoria!==catFil) return false;
-    return true;
-  });
-
-  // Group by frota
+  // Pega frotas únicas para analisar
+  const frotasUnicas = [...new Set(machines.map(m=>m.frota))];
   const report = {};
 
-  // Add history events
-  nkEvents.forEach(h=>{
-    if(!report[h.frota]) report[h.frota]={frota:h.frota,modelo:h.modelo||MODELOS[h.frota]||'—',categoria:'',eventos:[],diasIndisp:new Set()};
-    const m=machines.find(x=>x.frota===h.frota);
-    if(m) report[h.frota].categoria=m.categoria;
-    const hDate=parseDate(h.at);
-    if(hDate){
-      const dateStr=hDate.toLocaleDateString('pt-BR');
-      report[h.frota].diasIndisp.add(dateStr);
-      report[h.frota].eventos.push({data:dateStr,hora:hDate.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),obs:h.obs||'—',resp:h.resp||'—',user:h.user||'—'});
-    }
-  });
+  frotasUnicas.forEach(frota=>{
+    // Aplica filtros
+    if(frotaFil && frota !== frotaFil) return;
+    const maq = machines.find(m=>m.frota===frota);
+    if(!maq) return;
+    if(catFil && maq.categoria !== catFil) return;
 
-  // Add currently nok machines if updatedAt is in period
-  currentNok.forEach(m=>{
-    if(!report[m.frota]){
-      report[m.frota]={frota:m.frota,modelo:m.modelo,categoria:m.categoria,eventos:[],diasIndisp:new Set()};
+    // Pega todo o histórico desta frota ordenado cronologicamente
+    const frotaHist = history
+      .filter(h=>h.frota===frota)
+      .map(h=>({...h, _date: parseDate(h.at)}))
+      .filter(h=>h._date)
+      .sort((a,b)=>a._date-b._date);
+
+    // Calcula períodos de indisponibilidade
+    const diasIndisp = new Set();
+    const eventos = [];
+    let inicioNok = null;
+    let obsNok = '—';
+    let respNok = '—';
+    let userNok = '—';
+
+    // Adiciona estado atual ao final do histórico para fechar períodos abertos
+    const histComAtual = [...frotaHist];
+    if(maq.status === 'nok' && maq.updatedAt){
+      // Frota ainda está indisponível — fecha com data final do período
+      histComAtual.push({
+        frota, newStatus:'nok', _date: endD,
+        obs: maq.obs||'—', resp: maq.resp||'—', user:'—', at: maq.updatedAt
+      });
     }
-    if(m.updatedAt){
-      const hDate=parseDate(m.updatedAt);
-      if(hDate&&hDate>=startD&&hDate<=endD){
-        const dateStr=hDate.toLocaleDateString('pt-BR');
-        report[m.frota].diasIndisp.add(dateStr);
-        if(!report[m.frota].eventos.find(e=>e.data===dateStr)){
-          report[m.frota].eventos.push({data:dateStr,hora:hDate.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),obs:m.obs||'—',resp:m.resp||'—',user:'—'});
+
+    histComAtual.forEach(h=>{
+      if(h.newStatus === 'nok'){
+        // Início de indisponibilidade
+        if(!inicioNok){
+          inicioNok = h._date;
+          obsNok  = h.obs||'—';
+          respNok = h.resp||'—';
+          userNok = h.user||'—';
+          // Adiciona evento
+          if(h._date >= startD && h._date <= endD){
+            const dateStr = h._date.toLocaleDateString('pt-BR');
+            eventos.push({
+              data: dateStr,
+              hora: h._date.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
+              obs:  obsNok, resp: respNok, user: userNok,
+              tipo: 'inicio'
+            });
+          }
+        }
+      } else {
+        // Fim de indisponibilidade (ok ou warn)
+        if(inicioNok){
+          const fimNok = h._date;
+          // Calcula todos os dias do período que se cruzam com o filtro
+          let d = new Date(Math.max(inicioNok, startD));
+          d.setHours(0,0,0,0);
+          const fim = new Date(Math.min(fimNok, endD));
+          while(d <= fim){
+            diasIndisp.add(d.toLocaleDateString('pt-BR'));
+            d.setDate(d.getDate()+1);
+          }
+          inicioNok = null;
         }
       }
+    });
+
+    // Se ainda está indisponível até hoje
+    if(inicioNok && maq.status === 'nok'){
+      let d = new Date(Math.max(inicioNok, startD));
+      d.setHours(0,0,0,0);
+      const fim = new Date(Math.min(endD, new Date()));
+      while(d <= fim){
+        diasIndisp.add(d.toLocaleDateString('pt-BR'));
+        d.setDate(d.getDate()+1);
+      }
+    }
+
+    if(diasIndisp.size > 0){
+      report[frota] = {
+        frota,
+        modelo:    maq.modelo||MODELOS[frota]||'—',
+        categoria: maq.categoria||'—',
+        eventos,
+        diasIndisp,
+      };
     }
   });
 
   const reportArr = Object.values(report).sort((a,b)=>b.diasIndisp.size-a.diasIndisp.size);
   const totalFrotas = reportArr.length;
-  const totalEventos = nkEvents.length;
+  const totalEventos = reportArr.reduce((s,r)=>s+r.eventos.length,0);
   const totalDias = reportArr.reduce((s,r)=>s+r.diasIndisp.size,0);
 
   let html = '';
