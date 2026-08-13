@@ -1043,7 +1043,12 @@ async function exportGoogleSheets(){
       const row=7+i;
       const rs=i%2===0?S.row1:S.row2;
       const fs=i%2===0?S.frota1:S.frota2;
-      const datas=[...r.diasIndisp].join(' | ');
+      const fmtD = d => d ? d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}) : null;
+      const ini  = fmtD(r.dataInicio);
+      const fim  = fmtD(r.dataFim);
+      const datas = ini && fim  ? `${ini} - ${fim}`
+                  : ini && !fim ? `${ini} - Em aberto`
+                  : '—';
       const lastObs=r.eventos.length?r.eventos[r.eventos.length-1].obs:'—';
       sc(ws1,'A'+row,r.frota,fs);
       sc(ws1,'B'+row,r.modelo,rs);
@@ -1093,14 +1098,12 @@ async function exportGoogleSheets(){
     // Build rows: one per frota, sorted by dias ASC
     const resumoRapido = rep.map(r=>{
       const dias = r.diasIndisp.size;
-      const datas = [...r.diasIndisp].sort();
-      // Get date range: first and last date
-      let periodo3 = '—';
-      if(datas.length===1){
-        periodo3 = datas[0];
-      } else if(datas.length>1){
-        periodo3 = `${datas[0]} - ${datas[datas.length-1]}`;
-      }
+      const fmtD3 = d => d ? d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'}) : null;
+      const ini3  = fmtD3(r.dataInicio);
+      const fim3  = fmtD3(r.dataFim);
+      const periodo3 = ini3 && fim3  ? `${ini3} - ${fim3}`
+                     : ini3 && !fim3 ? `${ini3} - Em aberto`
+                     : '—';
       // Machine name: categoria short + frota
       const catShort = r.categoria
         .replace('Empilhadeira Retrátil','Empilhadeira Retrátil')
