@@ -233,7 +233,7 @@ tbody tr:hover td{background:#fafbfd}
     </div>
     <div>
       <div class="bar-title">Farol das Frotas Somov</div>
-      <div class="bar-sub">Mercado Livre PE · clique 🔄 para atualizar</div>
+      <div class="bar-sub">Mercado Livre PE · auto-sync inteligente</div>
     </div>
     <div style="flex:1"></div>
     <div class="user-badge">
@@ -613,14 +613,35 @@ async function initApp(){
     renderAll();
     setSyncState('ok','AO VIVO');
     document.getElementById('sync-time').textContent=ts();
-    // Sem polling automático — sync inteligente sob demanda
+    // Verifica versão a cada 2s — só baixa dados se houver mudança
+    await checkVersion(); // pega versão inicial
+    pollTimer=setInterval(checkVersion,2000);
   }catch(e){
     setSyncState('err','Erro');
     document.getElementById('loading-overlay').innerHTML=`<div style="font-size:28px;margin-bottom:12px">⚠️</div><div style="font-weight:600;margin-bottom:8px">Erro ao conectar</div><div style="font-size:12px;color:var(--mu);margin-bottom:14px">${e.message}</div><button onclick="location.reload()" class="bs">Tentar novamente</button>`;
   }
 }
 
-async function poll(){
+let lastVersion = null;
+
+async function checkVersion(){
+  if(isSaving) return;
+  try{
+    const r = await fetch(BACKEND + '?action=version');
+    const d = await r.json();
+    if(d.version && d.version !== lastVersion){
+      if(lastVersion !== null){
+        // Houve mudança — busca dados completos
+        await poll(true);
+        showToast('🔄 Dados atualizados!','tok');
+      }
+      lastVersion = d.version;
+    }
+    setSyncState('ok','AO VIVO');
+  }catch(_){setSyncState('err','Sem conexão');}
+}
+
+async function poll(silent=false){
   if(isSaving) return;
   try{
     const data=await readBin();
