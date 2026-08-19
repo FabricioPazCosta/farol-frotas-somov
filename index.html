@@ -233,7 +233,7 @@ tbody tr:hover td{background:#fafbfd}
     </div>
     <div>
       <div class="bar-title">Farol das Frotas Somov</div>
-      <div class="bar-sub">Mercado Livre PE · sync a cada 5s</div>
+      <div class="bar-sub">Mercado Livre PE · clique 🔄 para atualizar</div>
     </div>
     <div style="flex:1"></div>
     <div class="user-badge">
@@ -245,7 +245,8 @@ tbody tr:hover td{background:#fafbfd}
       <div class="sync-dot" id="sync-dot"></div>
       <span id="sync-label">AO VIVO</span>
     </div>
-    <div style="font-size:10.5px;color:rgba(255,255,255,.65)"><b id="sync-time" style="color:#fff">—</b></div>
+    <div style="font-size:10.5px;color:rgba(255,255,255,.65)">Atualizado: <b id="sync-time" style="color:#fff">—</b></div>
+    <button class="bar-btn" id="btn-refresh" onclick="manualRefresh()" title="Atualizar dados agora">🔄</button>
     <button class="bar-btn" onclick="openChangePwd()">🔑</button>
     <button class="bar-btn" onclick="logout()">Sair</button>
   </div>
@@ -612,7 +613,7 @@ async function initApp(){
     renderAll();
     setSyncState('ok','AO VIVO');
     document.getElementById('sync-time').textContent=ts();
-    pollTimer=setInterval(poll,5000);
+    // Sem polling automático — sync inteligente sob demanda
   }catch(e){
     setSyncState('err','Erro');
     document.getElementById('loading-overlay').innerHTML=`<div style="font-size:28px;margin-bottom:12px">⚠️</div><div style="font-weight:600;margin-bottom:8px">Erro ao conectar</div><div style="font-size:12px;color:var(--mu);margin-bottom:14px">${e.message}</div><button onclick="location.reload()" class="bs">Tentar novamente</button>`;
@@ -636,6 +637,16 @@ async function poll(){
     setSyncState('ok','AO VIVO');
     document.getElementById('sync-time').textContent=ts();
   }catch(_){setSyncState('err','Sem conexão');}
+}
+
+async function manualRefresh(){
+  const btn = document.getElementById('btn-refresh');
+  btn.textContent='⏳';
+  btn.disabled=true;
+  await poll();
+  btn.textContent='🔄';
+  btn.disabled=false;
+  showToast('✅ Dados atualizados!','tok');
 }
 
 async function persistAll(){
