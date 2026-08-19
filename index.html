@@ -493,7 +493,15 @@ const ts   = () => new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-dig
 const tsDate = () => new Date().toLocaleDateString('pt-BR');
 function fmtDisplay(str){
   if(!str) return '';
+  // Já está no formato brasileiro dd/mm/yyyy — retorna direto
   if(/^\d{2}\/\d{2}\/\d{4}/.test(str)) return str;
+  // Formato ISO apenas data: yyyy-mm-dd — converte sem UTC shift
+  const iso = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if(iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  // Formato ISO com hora: yyyy-mm-ddThh:mm — converte local
+  const isoT = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if(isoT) return `${isoT[3]}/${isoT[2]}/${isoT[1]} ${isoT[4]}:${isoT[5]}`;
+  // Outros formatos (ex: formato americano antigo do JSONBin)
   const d = new Date(str);
   if(!isNaN(d.getTime()))
     return d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
@@ -578,9 +586,16 @@ async function initApp(){
   try{
     const data = await readBin();
     if(data.machines&&data.machines.length){
-      machines=data.machines;
+      machines=data.machines.map(m=>({
+        ...m,
+        updatedAt:         fmtDisplay(m.updatedAt),
+        dataOcorrenciaFmt: fmtDisplay(m.dataOcorrenciaFmt),
+      }));
     }
-    if(data.history) history=data.history;
+    if(data.history) history=data.history.map(h=>({
+      ...h,
+      at: fmtDisplay(h.at),
+    }));
     if(data.users&&data.users.length){
       users=data.users;
       DEFAULT_USERS.forEach(du=>{if(!users.find(u=>u.username===du.username))users.push(du);});
@@ -609,8 +624,12 @@ async function poll(){
   try{
     const data=await readBin();
     if(data.machines){
-      machines=data.machines;
-      if(data.history) history=data.history;
+      machines=data.machines.map(m=>({
+        ...m,
+        updatedAt:         fmtDisplay(m.updatedAt),
+        dataOcorrenciaFmt: fmtDisplay(m.dataOcorrenciaFmt),
+      }));
+      if(data.history) history=data.history.map(h=>({...h, at: fmtDisplay(h.at)}));
       if(data.users&&data.users.length) users=data.users;
     }
     renderAll();
