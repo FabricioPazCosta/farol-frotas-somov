@@ -616,7 +616,7 @@ async function initApp(){
     document.getElementById('sync-time').textContent=ts();
     // Verifica versão a cada 2s — só baixa dados se houver mudança
     await checkVersion(); // pega versão inicial
-    pollTimer=setInterval(checkVersion,2000);
+    pollTimer=setInterval(checkVersion,1000);
   }catch(e){
     setSyncState('err','Erro');
     document.getElementById('loading-overlay').innerHTML=`<div style="font-size:28px;margin-bottom:12px">⚠️</div><div style="font-weight:600;margin-bottom:8px">Erro ao conectar</div><div style="font-size:12px;color:var(--mu);margin-bottom:14px">${e.message}</div><button onclick="location.reload()" class="bs">Tentar novamente</button>`;
@@ -624,11 +624,12 @@ async function initApp(){
 }
 
 let lastVersion = null;
+let isChecking  = false;
 
 async function checkVersion(){
-  if(isSaving) return;
+  if(isSaving || isChecking) return; // evita requisições simultâneas
+  isChecking = true;
   try{
-    // Usa POST para checar versão (GET params são perdidos no redirect do Apps Script)
     const r = await fetch(BACKEND, {
       method:'POST',
       headers:{'Content-Type':'text/plain'},
@@ -638,7 +639,6 @@ async function checkVersion(){
     const v = String(d.version ?? '');
     if(v && v !== lastVersion){
       if(lastVersion !== null){
-        // Houve mudança — busca dados completos e atualiza tela
         await poll(true);
         showToast('🔄 Dados atualizados!','tok');
       }
@@ -646,6 +646,7 @@ async function checkVersion(){
     }
     setSyncState('ok','AO VIVO');
   }catch(_){setSyncState('err','Sem conexão');}
+  finally{ isChecking = false; }
 }
 
 async function poll(silent=false){
