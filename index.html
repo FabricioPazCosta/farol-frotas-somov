@@ -597,6 +597,7 @@ async function initApp(){
       ...h,
       at: fmtDisplay(h.at),
     }));
+    if(data.version) lastVersion = String(data.version);
     if(data.users&&data.users.length){
       users=data.users;
       DEFAULT_USERS.forEach(du=>{if(!users.find(u=>u.username===du.username))users.push(du);});
@@ -627,15 +628,21 @@ let lastVersion = null;
 async function checkVersion(){
   if(isSaving) return;
   try{
-    const r = await fetch(BACKEND + '?action=version');
+    // Usa POST para checar versão (GET params são perdidos no redirect do Apps Script)
+    const r = await fetch(BACKEND, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain'},
+      body: JSON.stringify({action:'version'})
+    });
     const d = await r.json();
-    if(d.version && d.version !== lastVersion){
+    const v = String(d.version ?? '');
+    if(v && v !== lastVersion){
       if(lastVersion !== null){
-        // Houve mudança — busca dados completos
+        // Houve mudança — busca dados completos e atualiza tela
         await poll(true);
         showToast('🔄 Dados atualizados!','tok');
       }
-      lastVersion = d.version;
+      lastVersion = v;
     }
     setSyncState('ok','AO VIVO');
   }catch(_){setSyncState('err','Sem conexão');}
