@@ -491,6 +491,14 @@ const ICO  = {ok:'🟢', warn:'🟡', nok:'🔴'};
 const CLS  = {ok:'ok', warn:'wn', nok:'nk'};
 const ts   = () => new Date().toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
 const tsDate = () => new Date().toLocaleDateString('pt-BR');
+function fmtDisplay(str){
+  if(!str) return '';
+  if(/^\d{2}\/\d{2}\/\d{4}/.test(str)) return str;
+  const d = new Date(str);
+  if(!isNaN(d.getTime()))
+    return d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  return str;
+}
 
 // ── BACKEND ───────────────────────────────────────────────────────────────────
 async function readBin(){
@@ -702,8 +710,8 @@ function renderFarol(){
               <div class="obs-lbl">Observação</div>
               <div class="obs-txt">${m.obs||'<i>Sem observação</i>'}</div>
               ${m.resp?`<div class="mc-meta">👤 ${m.resp}</div>`:''}
-              ${m.dataOcorrenciaFmt?`<div class="mc-meta">📅 ${m.dataOcorrenciaFmt}</div>`:''}
-              ${m.updatedAt?`<div class="mc-meta">🕐 ${m.updatedAt}</div>`:''}
+              ${m.dataOcorrenciaFmt?`<div class="mc-meta">📅 ${fmtDisplay(m.dataOcorrenciaFmt)}</div>`:''}
+              ${m.updatedAt?`<div class="mc-meta">🕐 ${fmtDisplay(m.updatedAt)}</div>`:''}
               <div class="ehint">Editar →</div>
             </div>
           </div>`;
@@ -744,8 +752,8 @@ function renderTable(){
       <td style="color:var(--mu);font-size:11px;max-width:180px">${m.obs||'—'}</td>
       <td style="color:var(--mu);font-size:11px">${m.turno||'—'}</td>
       <td style="color:var(--mu);font-size:11px">${m.resp||'—'}</td>
-      <td style="color:var(--mu);font-size:11px;white-space:nowrap">${m.dataOcorrenciaFmt||'—'}</td>
-      <td style="color:var(--mu);font-size:11px;white-space:nowrap">${m.updatedAt||'—'}</td>
+      <td style="color:var(--mu);font-size:11px;white-space:nowrap">${fmtDisplay(m.dataOcorrenciaFmt)||'—'}</td>
+      <td style="color:var(--mu);font-size:11px;white-space:nowrap">${fmtDisplay(m.updatedAt)||'—'}</td>
       <td><button class="edb" onclick="openModal('${m.frota}')">Editar</button></td>
     </tr>`;}).join('')}</tbody></table>`;
 }
@@ -772,7 +780,7 @@ function renderHistory(){
           <button onclick="delHistory(${h._idx})" title="Excluir registro" style="border:none;background:transparent;color:#94a3b8;cursor:pointer;font-size:14px;padding:2px 4px;border-radius:4px;line-height:1;margin-left:4px" onmouseover="this.style.color='var(--nk)';this.style.background='var(--nkb)'" onmouseout="this.style.color='#94a3b8';this.style.background='transparent'">🗑</button>
         </div>
         ${h.obs?`<div style="font-size:11px;color:var(--mu);margin-top:2px">📝 ${h.obs}</div>`:''}
-        ${h.dataOcorrencia?`<div style="font-size:11px;color:var(--mu)">📅 ${h.dataOcorrencia}</div>`:''}
+        ${h.dataOcorrencia?`<div style="font-size:11px;color:var(--mu)">📅 ${fmtDisplay(h.dataOcorrencia)}</div>`:''}
         ${h.resp?`<div style="font-size:11px;color:var(--mu)">👤 ${h.resp}</div>`:''}
         ${h.user?`<div style="font-size:11px;color:var(--a2)">🔐 ${h.user}</div>`:''}
       </div>
@@ -1218,6 +1226,7 @@ function updateModalBtns(){
 async function saveModal(){
   if(!modalId||isSaving) return;
   const m=machines.find(x=>x.frota===modalId);
+  if(!m){showToast('⚠️ Frota não encontrada','tnk');return;}
   const t=ts();
   const newObs=document.getElementById('m-obs').value.trim();
   const newTurno=document.getElementById('m-turno').value.trim();
@@ -1231,7 +1240,7 @@ async function saveModal(){
   machines[idx]={...m,status:modalStatus,obs:newObs,turno:newTurno||m.turno,resp:newResp,updatedAt:t,dataOcorrencia:newData,horaOcorrencia:newHora,dataOcorrenciaFmt:dataFmt};
   closeModal(); renderAll();
   const c=CLS[modalStatus];
-  showToast(`${ICO[modalStatus]} Frota ${modalId} → ${LBL[modalStatus]}`,c==='ok'?'tok':c==='wn'?'twn':'tnk');
+  showToast(`${ICO[modalStatus]} Frota ${m.frota} → ${LBL[modalStatus]}`,c==='ok'?'tok':c==='wn'?'twn':'tnk');
   await persistAll();
 }
 
