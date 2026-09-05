@@ -648,6 +648,14 @@ async function initApp(){
   setSyncState('busy','Carregando...');
   try{
     const data = await readBin();
+
+    // Proteção: só aceita os dados se a leitura realmente retornou algo coerente.
+    // Nunca sobrescreve o banco com dados vazios/padrão — isso apagaria tudo
+    // em caso de falha temporária de leitura (ex: instabilidade do Apps Script).
+    if(!data || (!data.machines && !data.users)){
+      throw new Error('O banco retornou vazio ou inválido — não vou sobrescrever os dados existentes. Tente novamente.');
+    }
+
     if(data.machines&&data.machines.length){
       machines=data.machines.map(m=>({
         ...m,
@@ -665,13 +673,20 @@ async function initApp(){
       users=data.users;
       DEFAULT_USERS.forEach(du=>{if(!users.find(u=>u.username===du.username))users.push(du);});
     }
-    // If bin was empty, initialize and save to cloud
-    const needsSave=!data.machines||!data.machines.length||!data.users||!data.users.length;
-    if(needsSave){
-      if(!data.machines||!data.machines.length) machines=BASE_MACHINES.map(m=>({...m}));
-      if(!data.users||!data.users.length) users=[...DEFAULT_USERS];
+
+    // Só grava de volta se realmente não houver NENHUM registro em lugar nenhum
+    // (primeiríssima configuração do sistema, planilha genuinamente vazia).
+    // Isso nunca deve rodar depois que o sistema já tem dados reais.
+    const bancoTotalmenteVazio = (!data.machines||!data.machines.length) && (!data.users||!data.users.length);
+    if(bancoTotalmenteVazio){
+      if(!confirm('O banco de dados parece estar vazio (primeira configuração?). Deseja inicializar com os dados padrão? Isso é seguro apenas se for a primeira vez usando o sistema.')){
+        throw new Error('Inicialização cancelada pelo usuário para evitar perda de dados.');
+      }
+      machines=BASE_MACHINES.map(m=>({...m}));
+      users=[...DEFAULT_USERS];
       await writeBin({machines,history,users});
     }
+
     document.getElementById('loading-overlay').classList.add('hidden');
     document.getElementById('main-content').classList.remove('hidden');
     renderAll();
@@ -716,7 +731,9 @@ async function poll(silent=false){
   if(isSaving) return;
   try{
     const data=await readBin();
-    if(data.machines){
+    // Proteção: nunca aceita uma resposta vazia como válida — evita apagar
+    // a tela caso o backend responda momentaneamente sem dados.
+    if(data && data.machines && data.machines.length){
       machines=data.machines.map(m=>({
         ...m,
         updatedAt:         fmtDisplay(m.updatedAt),
@@ -724,6 +741,7 @@ async function poll(silent=false){
       }));
       if(data.history) history=data.history.map(h=>({...h, at: fmtDisplay(h.at)}));
       if(data.users&&data.users.length) users=data.users;
+      if(data.accessLog) accessLog = data.accessLog;
     }
     renderAll();
     setSyncState('ok','AO VIVO');
